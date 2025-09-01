@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>THB-G Token (THG) DApp</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: linear-gradient(to bottom, #0f2027, #203a43, #2c5364);
+      color: white;
+      padding: 30px;
+    }
+    h1 { color: #ffd700; margin-bottom: 20px; }
+    button { background: #1e90ff; color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; margin-top: 10px; font-size: 16px; }
+    button:hover { background: #104e8b; }
+    input { padding: 8px; margin-top: 5px; border: none; border-radius: 6px; text-align: center; font-size: 16px; }
+    div.section { background: rgba(255,255,255,0.1); margin: 20px auto; padding: 20px; border-radius: 12px; max-width: 400px; box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+    p { font-size: 18px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.min.js"></script>
+</head>
+<body>
+  <h1>THB-G Token (THG)</h1>
+  <button id="connectBtn">🔗 Connect Wallet</button>
+
+  <div class="section" id="balances">
+    <h2>Balances</h2>
+    <p>THG: <span id="thgBalance">0</span></p>
+    <p>Stablecoin: <span id="stableBalance">0</span></p>
+  </div>
+
+  <div class="section" id="buy">
+    <h2>Buy THG</h2>
+    <input type="number" id="buyAmount" placeholder="Amount Stablecoin">
+    <br>
+    <button id="buyBtn">Buy</button>
+  </div>
+
+  <div class="section" id="sell">
+    <h2>Sell THG</h2>
+    <input type="number" id="sellAmount" placeholder="Amount THG">
+    <br>
+    <button id="sellBtn">Sell</button>
+  </div>
+
+  <script>
+    const contractAddress = "YOUR_CONTRACT_ADDRESS"; // ใส่ Contract Address ของคุณตรงนี้
+
+    // ABI เต็มจากที่คุณให้มา
+    const abi = [
+        {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
+        {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},
+        {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"address","name":"stablecoin","type":"address"},{"indexed":false,"internalType":"uint256","name":"stableAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"thgAmount","type":"uint256"}],"name":"Bought","type":"event"},
+        {"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint8","name":"index","type":"uint8"},{"indexed":false,"internalType":"uint256","name":"oldPrice","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newPrice","type":"uint256"}],"name":"PriceUpdated","type":"event"},
+        {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"address","name":"stablecoin","type":"address"},{"indexed":false,"internalType":"uint256","name":"thgAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"stableReturned","type":"uint256"}],"name":"Sold","type":"event"},
+        {"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint8","name":"index","type":"uint8"},{"indexed":false,"internalType":"address","name":"tokenAddress","type":"address"},{"indexed":false,"internalType":"uint256","name":"pricePerTHG","type":"uint256"}],"name":"StablecoinAdded","type":"event"},
+        {"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint8","name":"index","type":"uint8"},{"indexed":false,"internalType":"address","name":"oldAddress","type":"address"},{"indexed":false,"internalType":"address","name":"newAddress","type":"address"},{"indexed":false,"internalType":"uint256","name":"oldPrice","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newPrice","type":"uint256"}],"name":"StablecoinUpdated","type":"event"},
+        {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},
+        {"inputs":[{"internalType":"address","name":"tokenAddress","type":"address"},{"internalType":"uint256","name":"price","type":"uint256"}],"name":"addStablecoin","outputs":[],"stateMutability":"nonpayable","type":"function"},
+        {"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},
+        {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+        {"inputs":[{"internalType":"uint8","name":"stableIndex","type":"uint8"},{"internalType":"uint256","name":"stableAmount","type":"uint256"}],"name":"buy","outputs":[],"stateMutability":"nonpayable","type":"function"},
+        {"inputs":[{"internalType":"uint8","name":"stableIndex","type":"uint8"},{"internalType":"uint256","name":"thgAmount","type":"uint256"}],"name":"sell","outputs":[],"stateMutability":"nonpayable","type":"function"},
+        {"inputs":[{"internalType":"uint8","name":"index","type":"uint8"},{"internalType":"uint256","name":"newPrice","type":"uint256"}],"name":"updatePrice","outputs":[],"stateMutability":"nonpayable","type":"function"},
+        {"inputs":[{"internalType":"uint8","name":"index","type":"uint8"},{"internalType":"address","name":"newAddress","type":"address"},{"internalType":"uint256","name":"newPrice","type":"uint256"}],"name":"updateStablecoin","outputs":[],"stateMutability":"nonpayable","type":"function"}
+    ];
+
+    let provider, signer, contract;
+
+    document.getElementById("connectBtn").onclick = async () => {
+      if (window.ethereum) {
+        provider = new ethers.BrowserProvider(window.ethereum);
+        signer = await provider.getSigner();
+        contract = new ethers.Contract(contractAddress, abi, signer);
+        alert("Wallet connected: " + await signer.getAddress());
+        loadBalances();
+      } else {
+        alert("MetaMask not found!");
+      }
+    };
+
+    async function loadBalances() {
+      const address = await signer.getAddress();
+      const thgBalance = await contract.balanceOf(address);
+      document.getElementById("thgBalance").innerText = ethers.formatUnits(thgBalance, 6);
+
+      // ใช้ stablecoin index 0 (ตัวแรก)
+      const stableInfo = await contract.getStablecoin(0);
+      const stableTokenAddress = stableInfo.tokenAddress;
+
+      const stableToken = new ethers.Contract(stableTokenAddress, [
+        "function balanceOf(address) view returns (uint256)"
+      ], provider);
+
+      const stableBalance = await stableToken.balanceOf(address);
+      document.getElementById("stableBalance").innerText = ethers.formatUnits(stableBalance, 6);
+    }
+
+    document.getElementById("buyBtn").onclick = async () => {
+      const amount = document.getElementById("buyAmount").value;
+      if(!amount || amount <= 0) return alert("กรอกจำนวน stablecoin ให้ถูกต้อง");
+      const tx = await contract.buy(0, ethers.parseUnits(amount, 6));
+      await tx.wait();
+      loadBalances();
+      alert("ซื้อ THG เสร็จเรียบร้อย!");
+    };
+
+    document.getElementById("sellBtn").onclick = async () => {
+      const amount = document.getElementById("sellAmount").value;
+      if(!amount || amount <= 0) return alert("กรอกจำนวน THG ให้ถูกต้อง");
+      const tx = await contract.sell(0, ethers.parseUnits(amount, 6));
+      await tx.wait();
+      loadBalances();
+      alert("ขาย THG เสร็จเรียบร้อย!");
+    };
+  </script>
+</body>
+</html>
